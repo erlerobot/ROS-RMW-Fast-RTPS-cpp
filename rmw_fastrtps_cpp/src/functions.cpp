@@ -16,6 +16,10 @@
 #include <fastrtps/subscriber/SampleInfo.h>
 #include <fastrtps/attributes/SubscriberAttributes.h>
 
+#include "introspection_msgs/msg/ros_meta.h"
+#include "rosidl_generator_c/string_functions.h"
+#include "rosidl_generator_c/primitives_array_functions.h"
+
 #include <cassert>
 #include <mutex>
 #include <condition_variable>
@@ -265,6 +269,46 @@ extern "C"
         return RMW_RET_OK;
     }
 
+    void create_publisher_ros_meta(rmw_node_t * node)
+    {
+      //publish node name  
+      rmw_qos_profile_t qos_profile;
+      qos_profile.depth = 10;
+      qos_profile.reliability = RMW_QOS_POLICY_RELIABLE;
+      qos_profile.history = RMW_QOS_POLICY_KEEP_LAST_HISTORY;
+      qos_profile.durability = RMW_QOS_POLICY_TRANSIENT_LOCAL_DURABILITY;
+
+      const rosidl_message_type_support_t * ts_rosmeta = ROSIDL_GET_MSG_TYPE_SUPPORT(introspection_msgs, ROSMeta);
+      rmw_publisher_t * pub_rosmeta = rmw_create_publisher(node,
+                                                   ts_rosmeta,
+                                                   "ros_meta",
+                                                   &qos_profile);
+      // reserve memory
+      introspection_msgs__msg__ROSMeta rosmeta_msg;
+      introspection_msgs__msg__ROSMeta__init(&rosmeta_msg);
+      rosidl_generator_c__String__assign(&rosmeta_msg.node_name, node->name);
+      bool reserve = rosidl_generator_c__uint8__Array__init(&rosmeta_msg.id, RMW_GID_STORAGE_SIZE);
+
+      rmw_gid_t * gid = (rmw_gid_t*)rmw_allocate(sizeof(rmw_gid_t));
+
+      // we don't sent the implementation identifier 
+      // char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen("OpenSplice")+1);
+      // memcpy(data_aux2, "OpenSplice\0",strlen("OpenSplice")+1);
+      // gid->implementation_identifier = data_aux2;
+
+      rmw_get_gid_for_publisher(pub_rosmeta, gid);
+      for(int i = 0; i < rosmeta_msg.id.size; i++){
+        rosmeta_msg.id.data[i] = gid->data[i];
+      }
+      rmw_publish(pub_rosmeta, &rosmeta_msg);
+
+      //free memory
+      rmw_free((rmw_gid_t*)gid);
+      rosidl_generator_c__String__fini(&rosmeta_msg.node_name);
+      rosidl_generator_c__uint8__Array__fini(&rosmeta_msg.id);
+      introspection_msgs__msg__ROSMeta__fini(&rosmeta_msg);
+    }
+
     rmw_node_t* rmw_create_node(const char *name, size_t domain_id)
     {
         if (!name) {
@@ -304,6 +348,8 @@ extern "C"
         }
         memcpy(const_cast<char *>(node_handle->name), name, strlen(name) + 1);
 
+        // TODO FIXME, code crashes at this point when launching publishers
+        //create_publisher_ros_meta(node_handle);
         return node_handle;
     }
 
@@ -335,6 +381,13 @@ extern "C"
         free(static_cast<void*>(node));
 
         return RMW_RET_OK;
+    }
+
+    rmw_ros_meta_t * rmw_get_node_names(void)
+    {
+        RMW_SET_ERROR_MSG("get_node_names not implemented in FastRTPS ");
+        printf("rmw_get_node_names in FastRTPS\n");
+        return NULL;
     }
 
     typedef struct CustomPublisherInfo

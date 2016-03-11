@@ -10,7 +10,9 @@ find_package(fastrtps REQUIRED CONFIG)
 
 find_package(rmw REQUIRED)
 find_package(rosidl_generator_cpp REQUIRED)
+find_package(rosidl_typesupport_introspection_c REQUIRED)
 find_package(rosidl_typesupport_introspection_cpp REQUIRED)
+find_package(introspection_msgs REQUIRED)
 
 ament_export_dependencies(rmw)
 ament_export_dependencies(rosidl_generator_cpp)
@@ -30,6 +32,8 @@ target_link_libraries(rmw_fastrtps_cpp
 		fastcdr fastrtps)
 
 ament_target_dependencies(rmw_fastrtps_cpp
+  "introspection_msgs"
+  "rosidl_typesupport_introspection_c"
   "rosidl_typesupport_introspection_cpp"
   "rmw"
   "rosidl_generator_cpp")
