@@ -282,7 +282,16 @@ extern "C"
       rmw_publisher_t * pub_rosmeta = rmw_create_publisher(node,
                                                    ts_rosmeta,
                                                    "ros_meta",
-                                                   &qos_profile);
+                                                   &qos_profile);      
+
+      // the publisher returns NULL because the type support returned is introspection_c
+      // instead of introspection_cpp
+      if(!pub_rosmeta)
+      {
+        RMW_SET_ERROR_MSG("create_publisher_ros_meta() could not create publisher");
+        return;
+      }
+
       // reserve memory
       introspection_msgs__msg__ROSMeta rosmeta_msg;
       introspection_msgs__msg__ROSMeta__init(&rosmeta_msg);
@@ -296,17 +305,23 @@ extern "C"
       // memcpy(data_aux2, "OpenSplice\0",strlen("OpenSplice")+1);
       // gid->implementation_identifier = data_aux2;
 
+      printf("  ------ create_publisher_ros_meta 3\n");
       rmw_get_gid_for_publisher(pub_rosmeta, gid);
       for(int i = 0; i < rosmeta_msg.id.size; i++){
         rosmeta_msg.id.data[i] = gid->data[i];
       }
+      printf("  ------ create_publisher_ros_meta 3.5\n");
+
       rmw_publish(pub_rosmeta, &rosmeta_msg);
 
+      printf("  ------ create_publisher_ros_meta 4\n");
       //free memory
       rmw_free((rmw_gid_t*)gid);
       rosidl_generator_c__String__fini(&rosmeta_msg.node_name);
       rosidl_generator_c__uint8__Array__fini(&rosmeta_msg.id);
       introspection_msgs__msg__ROSMeta__fini(&rosmeta_msg);
+      printf("  ------ create_publisher_ros_meta 5\n");
+
     }
 
     rmw_node_t* rmw_create_node(const char *name, size_t domain_id)
@@ -349,7 +364,7 @@ extern "C"
         memcpy(const_cast<char *>(node_handle->name), name, strlen(name) + 1);
 
         // TODO FIXME, code crashes at this point when launching publishers
-        //create_publisher_ros_meta(node_handle);
+        create_publisher_ros_meta(node_handle);
         return node_handle;
     }
 
@@ -415,6 +430,26 @@ extern "C"
         }
 
         Participant *participant = static_cast<Participant*>(node->data);
+
+        // FIXME
+        // There is a discrepancy here which makes the function return NULL:
+        //  type_support->typesupport_identifier appears as "introspection_c"
+        //  rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier: introspection_cpp
+
+        printf("type_support->typesupport_identifier: %s\n", type_support->typesupport_identifier);
+        uint8_t *m = (uint8_t*) type_support->typesupport_identifier;
+        int c = sizeof(type_support->typesupport_identifier);
+        while(c--){
+                printf("%02x ", *(m++));
+        }
+        printf("\n");
+        printf("rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier: %s\n", rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier);
+        uint8_t *n = (uint8_t*) rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier;
+        int d = sizeof(rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier);
+        while(d--){
+                printf("%02x ", *(n++));
+        }
+        printf("\n");
 
         if(strcmp(type_support->typesupport_identifier, rosidl_typesupport_introspection_cpp::typesupport_introspection_identifier) != 0)
         {
