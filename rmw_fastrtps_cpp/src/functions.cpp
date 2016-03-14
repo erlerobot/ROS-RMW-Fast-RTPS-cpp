@@ -16,7 +16,14 @@
 #include <fastrtps/subscriber/SampleInfo.h>
 #include <fastrtps/attributes/SubscriberAttributes.h>
 
+#include "rosidl_generator_cpp/message_type_support.hpp"
+
 #include "introspection_msgs/msg/ros_meta.h"
+#include "introspection_msgs/msg/ros_meta__struct.hpp"
+#include "rosidl_typesupport_introspection_cpp/field_types.hpp"
+#include "rosidl_typesupport_introspection_cpp/identifier.hpp"
+#include "rosidl_typesupport_introspection_cpp/message_introspection.hpp"
+#include "rosidl_typesupport_introspection_cpp/visibility_control.h"
 #include "rosidl_generator_c/string_functions.h"
 #include "rosidl_generator_c/primitives_array_functions.h"
 
@@ -272,56 +279,56 @@ extern "C"
     void create_publisher_ros_meta(rmw_node_t * node)
     {
       //publish node name  
-      rmw_qos_profile_t qos_profile;
-      qos_profile.depth = 10;
-      qos_profile.reliability = RMW_QOS_POLICY_RELIABLE;
-      qos_profile.history = RMW_QOS_POLICY_KEEP_LAST_HISTORY;
-      qos_profile.durability = RMW_QOS_POLICY_TRANSIENT_LOCAL_DURABILITY;
+        rmw_qos_profile_t qos_profile;
+        qos_profile.depth = 10;
+        qos_profile.reliability = RMW_QOS_POLICY_RELIABLE;
+        qos_profile.history = RMW_QOS_POLICY_KEEP_LAST_HISTORY;
+        qos_profile.durability = RMW_QOS_POLICY_TRANSIENT_LOCAL_DURABILITY;
 
-      const rosidl_message_type_support_t * ts_rosmeta = ROSIDL_GET_MSG_TYPE_SUPPORT(introspection_msgs, ROSMeta);
-      rmw_publisher_t * pub_rosmeta = rmw_create_publisher(node,
-                                                   ts_rosmeta,
-                                                   "ros_meta",
-                                                   &qos_profile);      
+        const rosidl_message_type_support_t * ts_rosmeta =  rosidl_typesupport_introspection_cpp::get_message_type_support_handle_introspection< introspection_msgs::msg::ROSMeta >();
+        ROSIDL_GET_MSG_TYPE_SUPPORT(introspection_msgs, ROSMeta);
+        rmw_publisher_t * pub_rosmeta = rmw_create_publisher(node,
+                                               ts_rosmeta,
+                                               "ros_meta",
+                                               &qos_profile);      
 
-      // the publisher returns NULL because the type support returned is introspection_c
-      // instead of introspection_cpp
-      if(!pub_rosmeta)
-      {
-        RMW_SET_ERROR_MSG("create_publisher_ros_meta() could not create publisher");
-        return;
-      }
+        // the publisher returns NULL because the type support returned is introspection_c
+        // instead of introspection_cpp
+        if(!pub_rosmeta)
+        {
+            RMW_SET_ERROR_MSG("create_publisher_ros_meta() could not create publisher");
+            return;
+        }
 
-      // reserve memory
-      introspection_msgs__msg__ROSMeta rosmeta_msg;
-      introspection_msgs__msg__ROSMeta__init(&rosmeta_msg);
-      rosidl_generator_c__String__assign(&rosmeta_msg.node_name, node->name);
-      bool reserve = rosidl_generator_c__uint8__Array__init(&rosmeta_msg.id, RMW_GID_STORAGE_SIZE);
+        // reserve memory
+        introspection_msgs__msg__ROSMeta rosmeta_msg;
+        introspection_msgs__msg__ROSMeta__init(&rosmeta_msg);
+        rosidl_generator_c__String__assignn(&rosmeta_msg.node_name, node->name, strlen(node->name)+1);
+        bool reserve = rosidl_generator_c__uint8__Array__init(&rosmeta_msg.id, RMW_GID_STORAGE_SIZE);
 
-      rmw_gid_t * gid = (rmw_gid_t*)rmw_allocate(sizeof(rmw_gid_t));
+        printf("node->name: %s %d\n", node->name, strlen(node->name));
+        printf("rosmeta_msg.node_name: %s %d\n", rosmeta_msg.node_name.data, strlen(rosmeta_msg.node_name.data) );
 
-      // we don't sent the implementation identifier 
-      // char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen("OpenSplice")+1);
-      // memcpy(data_aux2, "OpenSplice\0",strlen("OpenSplice")+1);
-      // gid->implementation_identifier = data_aux2;
+        rmw_gid_t * gid = (rmw_gid_t*)rmw_allocate(sizeof(rmw_gid_t));
 
-      printf("  ------ create_publisher_ros_meta 3\n");
-      rmw_get_gid_for_publisher(pub_rosmeta, gid);
-      for(int i = 0; i < rosmeta_msg.id.size; i++){
-        rosmeta_msg.id.data[i] = gid->data[i];
-      }
-      printf("  ------ create_publisher_ros_meta 3.5\n");
+        // we don't sent the implementation identifier 
+        // char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen("OpenSplice")+1);
+        // memcpy(data_aux2, "OpenSplice\0",strlen("OpenSplice")+1);
+        // gid->implementation_identifier = data_aux2;
 
-      rmw_publish(pub_rosmeta, &rosmeta_msg);
+        rmw_get_gid_for_publisher(pub_rosmeta, gid);
+        for(int i = 0; i < rosmeta_msg.id.size; i++){
+            rosmeta_msg.id.data[i] = gid->data[i];
+        }
+        
+        rmw_publish(pub_rosmeta, &rosmeta_msg);
 
-      printf("  ------ create_publisher_ros_meta 4\n");
-      //free memory
-      rmw_free((rmw_gid_t*)gid);
-      rosidl_generator_c__String__fini(&rosmeta_msg.node_name);
-      rosidl_generator_c__uint8__Array__fini(&rosmeta_msg.id);
-      introspection_msgs__msg__ROSMeta__fini(&rosmeta_msg);
-      printf("  ------ create_publisher_ros_meta 5\n");
-
+        // //free memory
+        rmw_free((rmw_gid_t*)gid);
+        rosidl_generator_c__String__fini(&rosmeta_msg.node_name);
+        rosidl_generator_c__uint8__Array__fini(&rosmeta_msg.id);
+        introspection_msgs__msg__ROSMeta__fini(&rosmeta_msg);
+        
     }
 
     rmw_node_t* rmw_create_node(const char *name, size_t domain_id)
@@ -403,6 +410,11 @@ extern "C"
         RMW_SET_ERROR_MSG("get_node_names not implemented in FastRTPS ");
         printf("rmw_get_node_names in FastRTPS\n");
         return NULL;
+    }
+
+    rmw_ret_t rmw_destroy_ros_meta(rmw_ros_meta_t * rosmeta)
+    {
+        return RMW_RET_OK;
     }
 
     typedef struct CustomPublisherInfo
