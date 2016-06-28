@@ -447,7 +447,7 @@ extern "C"
         return eprosima_fastrtps_identifier;
     }
 
-    bool get_datareader_qos(const rmw_qos_profile_t& qos_policies, SubscriberAttributes sattr)
+    bool get_datareader_qos(const rmw_qos_profile_t& qos_policies, SubscriberAttributes& sattr)
     {
         switch (qos_policies.history) {
             case RMW_QOS_POLICY_KEEP_LAST_HISTORY:
@@ -515,7 +515,7 @@ extern "C"
         return true;
     }
 
-    bool get_datawriter_qos(const rmw_qos_profile_t& qos_policies, PublisherAttributes pattr)
+    bool get_datawriter_qos(const rmw_qos_profile_t& qos_policies, PublisherAttributes& pattr)
     {
         switch (qos_policies.history)
         {
@@ -748,33 +748,30 @@ extern "C"
     rmw_ros_meta_t * 
     rmw_get_node_names(void)
     {
-        printf("rmw_get_node_names\n");
-  // Use the current ROS_DOMAIN_ID.
-  char * ros_domain_id = nullptr;
-  const char * env_var = "ROS_DOMAIN_ID";
-#ifndef _WIN32
-  ros_domain_id = getenv(env_var);
-#else
-  size_t ros_domain_id_size;
-  _dupenv_s(&ros_domain_id, &ros_domain_id_size, env_var);
-#endif  
-  size_t domain_id = std::stoi(ros_domain_id);
+      // Use the current ROS_DOMAIN_ID.
+      char * ros_domain_id = nullptr;
+      const char * env_var = "ROS_DOMAIN_ID";
+    #ifndef _WIN32
+      ros_domain_id = getenv(env_var);
+    #else
+      size_t ros_domain_id_size;
+      _dupenv_s(&ros_domain_id, &ros_domain_id_size, env_var);
+    #endif  
+      size_t domain_id = std::stoi(ros_domain_id);
 
-  // On Windows, setting the ROS_DOMAIN_ID does not fix the problem, so error early.
-#ifdef _WIN32
-  if (!ros_domain_id) {
-    RMW_SET_ERROR_MSG("environment variable ROS_DOMAIN_ID is not set");
-    fprintf(stderr, "[rmw_opensplice_cpp]: error: %s\n", rmw_get_error_string_safe());
-    return nullptr;
-  }
-#endif
+      // On Windows, setting the ROS_DOMAIN_ID does not fix the problem, so error early.
+    #ifdef _WIN32
+      if (!ros_domain_id) {
+        RMW_SET_ERROR_MSG("environment variable ROS_DOMAIN_ID is not set");
+        fprintf(stderr, "[rmw_opensplice_cpp]: error: %s\n", rmw_get_error_string_safe());
+        return nullptr;
+      }
+    #endif
 
   // Create a ROS middleware node that will be used to 
   // fetch other participant's data from the "ros_meta" topic
   rmw_node_t * rmw_node;
   rmw_node = rmw_create_node("get_node_names", domain_id);
-
-  printf("rmw_create_node\n");
 
   // Do not use builtin topics but instead, make use of the "ros_meta"
   //  topic create for this purpose.
@@ -824,8 +821,6 @@ extern "C"
       if(ret == RMW_RET_OK && taken){
         count++;
 
-        printf("node rec\n");
-
         // Based on count, allocate new structures for ros_meta_data, adding the new
         //  one and freeing previous allocated memory
         rmw_string_t* node_names_aux = (rmw_string_t*) rmw_allocate(sizeof(rmw_string_t)*count);
@@ -870,7 +865,7 @@ extern "C"
     totalb = b.tv_sec + b.tv_usec/1000000;
     diff = (totalb - totala);
     // wait for 1 millisecond
-    if(diff > 10){
+    if(diff > 5){
       timeout = true;
     }
   }
