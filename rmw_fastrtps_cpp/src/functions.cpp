@@ -387,7 +387,6 @@ public:
   : info_(info),
     conditionMutex_(NULL), conditionVariable_(NULL) {}
 
-
   void onNewDataMessage(Subscriber * sub)
   {
     assert(sub);
@@ -432,6 +431,92 @@ public:
         response = list.front();
         list.pop_front();
       }
+    }
+#include "introspection_msgs/msg/ros_meta.h"
+#include "rosidl_generator_c/string_functions.h"
+#include "rosidl_generator_c/primitives_array_functions.h"
+    rmw_ret_t
+    create_publisher_ros_meta(rmw_node_t * node)
+    {
+        //publish node name
+        rmw_qos_profile_t qos_profile;
+        qos_profile.depth = 1;
+        qos_profile.reliability = RMW_QOS_POLICY_RELIABLE;
+        qos_profile.history = RMW_QOS_POLICY_KEEP_LAST_HISTORY;
+        qos_profile.durability = RMW_QOS_POLICY_TRANSIENT_LOCAL_DURABILITY;
+
+        const rosidl_message_type_support_t * ts_rosmeta = ROSIDL_GET_MSG_TYPE_SUPPORT(introspection_msgs, ROSMeta);
+        rmw_publisher_t * pub_rosmeta = rmw_create_publisher(node,
+                                                   ts_rosmeta,
+                                                   "ros_meta",
+                                                   &qos_profile);
+        if(!pub_rosmeta)
+        {
+            RMW_SET_ERROR_MSG("create_publisher_ros_meta() could not create publisher");
+            goto fail_introspection;
+        }
+
+        // reserve memory
+        introspection_msgs__msg__ROSMeta rosmeta_msg;
+        if(!introspection_msgs__msg__ROSMeta__init(&rosmeta_msg)){
+            RMW_SET_ERROR_MSG("failed to allocate memory");
+            goto fail_introspection;
+        }
+        if(!rosidl_generator_c__String__assign(&rosmeta_msg.node_name, node->name)){
+            RMW_SET_ERROR_MSG("failed to allocate memory");
+            goto fail_introspection;
+        }
+        if(!rosidl_generator_c__uint8__Array__init(&rosmeta_msg.id, RMW_GID_STORAGE_SIZE)){
+            RMW_SET_ERROR_MSG("failed to allocate memory");
+            goto fail_introspection;
+        }
+
+        rmw_gid_t * gid ;
+        {gid = (rmw_gid_t*)rmw_allocate(sizeof(rmw_gid_t));}
+        if (!gid) {
+            RMW_SET_ERROR_MSG("failed to allocate memory");
+            goto fail_introspection;
+        }
+        // we don't sent the implementation identifier
+        // char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen("OpenSplice")+1);
+        // memcpy(data_aux2, "OpenSplice\0",strlen("OpenSplice")+1);
+        // gid->implementation_identifier = data_aux2;
+        if(rmw_get_gid_for_publisher(pub_rosmeta, gid) != RMW_RET_OK){
+            RMW_SET_ERROR_MSG("unable to to get gid");
+            goto fail_introspection;
+        }
+
+        for(unsigned i = 0; i < rosmeta_msg.id.size; i++){
+            rosmeta_msg.id.data[i] = gid->data[i];
+        }
+
+        if (rmw_publish(pub_rosmeta, &rosmeta_msg) != RMW_RET_OK) {
+            RMW_SET_ERROR_MSG("Error publishing message");
+            goto fail_introspection;
+        }
+
+        printf("publish: %s\n", node->name);
+
+        //free memory
+        rmw_free((rmw_gid_t*)gid);
+        rosidl_generator_c__String__fini(&rosmeta_msg.node_name);
+        rosidl_generator_c__uint8__Array__fini(&rosmeta_msg.id);
+        introspection_msgs__msg__ROSMeta__fini(&rosmeta_msg);
+
+        return RMW_RET_OK;
+    fail_introspection:
+        if(pub_rosmeta){
+            if (rmw_destroy_publisher(node, pub_rosmeta)){
+              RMW_SET_ERROR_MSG("failed to delete subscriber");
+            }
+        }
+        if(gid){
+            rmw_free((rmw_gid_t*)gid);
+        }
+        rosidl_generator_c__String__fini(&rosmeta_msg.node_name);
+        rosidl_generator_c__uint8__Array__fini(&rosmeta_msg.id);
+        introspection_msgs__msg__ROSMeta__fini(&rosmeta_msg);
+        return RMW_RET_ERROR;
     }
 
     return response;

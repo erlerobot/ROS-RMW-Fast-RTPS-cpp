@@ -49,6 +49,7 @@ target_link_libraries(rmw_fastrtps_cpp
   fastcdr fastrtps)
 
 ament_target_dependencies(rmw_fastrtps_cpp
+  "introspection_msgs"
   "rosidl_typesupport_introspection_c"
   "rosidl_typesupport_introspection_cpp"
   "rmw"
