@@ -698,6 +698,7 @@ bool get_datawriter_qos(const rmw_qos_profile_t & qos_policies, PublisherAttribu
   return true;
 }
 
+
 rmw_ret_t rmw_init()
 {
   return RMW_RET_OK;
