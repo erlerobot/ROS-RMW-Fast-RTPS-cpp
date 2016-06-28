@@ -907,8 +907,8 @@ extern "C"
         memcpy(data_aux, ros_message.node_name.data, ros_message.node_name.size+1);
         ros_meta_data->node_names[count-1].data = data_aux;
 
-        char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen("fastrtps")+1);
-        memcpy(data_aux2, "fastrtps",strlen("fastrtps")+1);
+        char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen(eprosima_fastrtps_identifier)+1);
+        memcpy(data_aux2, eprosima_fastrtps_identifier,strlen(eprosima_fastrtps_identifier)+1);
         ros_meta_data->ids[count-1].implementation_identifier = data_aux2;
 
         memcpy(ros_meta_data->ids[count-1].data, ros_message.id.data, ros_message.id.size);
@@ -921,7 +921,7 @@ extern "C"
     totalb = b.tv_sec + b.tv_usec/1000000;
     diff = (totalb - totala);
     // wait for 1 millisecond
-    if(diff > 5){
+    if(diff > 0.001){
       timeout = true;
     }
   }
