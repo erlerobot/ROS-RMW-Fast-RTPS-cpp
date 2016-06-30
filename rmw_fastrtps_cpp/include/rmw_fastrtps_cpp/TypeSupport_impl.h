@@ -221,7 +221,7 @@ void serialize_array(
         ser.serializeArray((T*)field, member->array_size_);
     } else {
         std::vector<T> & data = *reinterpret_cast<std::vector<T> *>(field);
-        if(data.size() > (member->is_upper_bound_ ? member->array_size_ : (typeTooLarge ? 30 : 101))) {
+        if(data.size() > (member->is_upper_bound_ ? member->array_size_ : 600000 )) {
             printf("vector overcomes the maximum length\n");
             throw std::runtime_error("vector overcomes the maximum length");
         }
@@ -241,7 +241,7 @@ void serialize_array(
         ser.serializeArray((T*)field, member->array_size_);
     } else {
         auto & data = *reinterpret_cast<typename GenericCArray<T>::type *>(field);
-        if(data.size > (member->is_upper_bound_ ? member->array_size_ : (typeTooLarge ? 30 : 101))) {
+        if(data.size > (member->is_upper_bound_ ? member->array_size_ : 600000 )) {
             printf("vector overcomes the maximum length\n");
             throw std::runtime_error("vector overcomes the maximum length");
         }
@@ -265,7 +265,7 @@ void serialize_array<std::string>(
     } else {
         auto & string_array_field = *reinterpret_cast<rosidl_generator_c__String__Array *>(field);
         if(
-            string_array_field.size > (member->is_upper_bound_ ? member->array_size_ : (typeTooLarge ? 30 : 101))) {
+            string_array_field.size > (member->is_upper_bound_ ? member->array_size_ : 600000 )) {
             printf("vector overcomes the maximum length\n");
             throw std::runtime_error("vector overcomes the maximum length");
         }
@@ -767,7 +767,7 @@ size_t TypeSupport<MembersType>::calculateMaxSerializedSize(
             {
                 current_alignment += 4 + eprosima::fastcdr::Cdr::alignment(current_alignment, 4);
 
-                if(array_size == 0) typeByDefaultLarge() ? array_size = 30 : array_size = 101;
+                if(array_size == 0) array_size = 600000;
             }
 
             switch(member->type_id_)

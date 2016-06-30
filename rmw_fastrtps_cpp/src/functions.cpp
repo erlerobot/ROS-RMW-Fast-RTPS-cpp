@@ -820,6 +820,16 @@ fail:
         publisherParam.topic.topicDataType = type_name;
         publisherParam.topic.topicName = topic_name;
 
+        publisherParam.qos.m_publishMode.kind = ASYNCHRONOUS_PUBLISH_MODE;
+
+        // 1 Heartbeat every 10ms
+        publisherParam.times.heartbeatPeriod.seconds = 0;
+        publisherParam.times.heartbeatPeriod.fraction = 42949673;
+
+        // 300000 bytes each 10ms
+        ThroughputControllerDescriptor throughputController{600000, 10};
+        publisherParam.terminalThroughputController = throughputController;
+
         if(!get_datawriter_qos(*qos_policies, publisherParam))
             goto fail;
 
