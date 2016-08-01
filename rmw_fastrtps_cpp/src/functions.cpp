@@ -1014,6 +1014,9 @@ fail:
         const char * env_var = "ROS_DOMAIN_ID";
 #ifndef _WIN32
         ros_domain_id = getenv(env_var);
+        if (ros_domain_id == NULL){
+            printf("ROS_DOMAIN_ID not set\n");
+        }
 #else
         size_t ros_domain_id_size;
         _dupenv_s(&ros_domain_id, &ros_domain_id_size, env_var);
