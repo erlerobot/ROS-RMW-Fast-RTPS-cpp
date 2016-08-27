@@ -1,3 +1,19 @@
+// Copyright 2016 Proyectos y Sistemas de Mantenimiento SL (eProsima).
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <map>
+
 #include "rmw/allocators.h"
 #include <rmw/rmw.h>
 #include <rmw/error_handling.h>
@@ -22,6 +38,15 @@
 #include <fastrtps/rtps/common/CDRMessage_t.h>
 
 #include <fastrtps/rtps/reader/RTPSReader.h> 
+#include <fastrtps/rtps/reader/StatefulReader.h>
+#include <fastrtps/rtps/reader/ReaderListener.h>
+#include <fastrtps/rtps/builtin/discovery/endpoint/EDPSimple.h>
+
+#include <fastrtps/rtps/RTPSDomain.h>
+#include <fastrtps/rtps/builtin/data/WriterProxyData.h>
+#include <fastrtps/rtps/common/CDRMessage_t.h>
+
+#include <fastrtps/rtps/reader/RTPSReader.h>
 #include <fastrtps/rtps/reader/StatefulReader.h>
 #include <fastrtps/rtps/reader/ReaderListener.h>
 #include <fastrtps/rtps/builtin/discovery/endpoint/EDPSimple.h>
@@ -248,43 +273,13 @@ void
 _delete_typesupport(void * untyped_typesupport, const char* typesupport_identifier)
 {
     if (using_introspection_c_typesupport(typesupport_identifier)) {
-        auto typed_typesupport = static_cast<MessageTypeSupport_cpp *>(untyped_typesupport);
+        auto typed_typesupport = static_cast<MessageTypeSupport_c *>(untyped_typesupport);
         if (typed_typesupport != nullptr)
             delete typed_typesupport;
     } else if (using_introspection_cpp_typesupport(typesupport_identifier)) {
         auto typed_typesupport = static_cast<MessageTypeSupport_cpp *>(untyped_typesupport);
         if (typed_typesupport != nullptr)
             delete typed_typesupport;
-    } else {
-        RMW_SET_ERROR_MSG("Unknown typesupport identifier");
-    }
-}
-
-rmw_fastrtps_cpp::Buffer *
-_create_data(void * untyped_typesupport, const char* typesupport_identifier)
-{
-    if (using_introspection_c_typesupport(typesupport_identifier)) {
-        auto typed_typesupport = static_cast<TypeSupport_c *>(untyped_typesupport);
-        return static_cast<rmw_fastrtps_cpp::Buffer *>(typed_typesupport->createData());
-    } else if (using_introspection_cpp_typesupport(typesupport_identifier)) {
-        auto typed_typesupport = static_cast<TypeSupport_cpp *>(untyped_typesupport);
-        return static_cast<rmw_fastrtps_cpp::Buffer *>(typed_typesupport->createData());
-    }
-    RMW_SET_ERROR_MSG("Unknown typesupport identifier");
-    return nullptr;
-}
-
-void
-_delete_data(
-    rmw_fastrtps_cpp::Buffer * buffer, void * untyped_typesupport,
-    const char* typesupport_identifier)
-{
-    if (using_introspection_c_typesupport(typesupport_identifier)) {
-        auto typed_typesupport = static_cast<TypeSupport_c *>(untyped_typesupport);
-        typed_typesupport->deleteData(buffer);
-    } else if (using_introspection_cpp_typesupport(typesupport_identifier)) {
-        auto typed_typesupport = static_cast<TypeSupport_cpp *>(untyped_typesupport);
-        typed_typesupport->deleteData(buffer);
     } else {
         RMW_SET_ERROR_MSG("Unknown typesupport identifier");
     }
@@ -292,15 +287,15 @@ _delete_data(
 
 bool
 _serialize_ros_message(
-    const void *ros_message, rmw_fastrtps_cpp::Buffer * buffer, void * untyped_typesupport,
+    const void *ros_message, eprosima::fastcdr::Cdr& ser, void * untyped_typesupport,
     const char* typesupport_identifier)
 {
     if (using_introspection_c_typesupport(typesupport_identifier)) {
         auto typed_typesupport = static_cast<MessageTypeSupport_c *>(untyped_typesupport);
-        return typed_typesupport->serializeROSmessage(ros_message, buffer);
+        return typed_typesupport->serializeROSmessage(ros_message, ser);
     } else if (using_introspection_cpp_typesupport(typesupport_identifier)) {
         auto typed_typesupport = static_cast<MessageTypeSupport_cpp *>(untyped_typesupport);
-        return typed_typesupport->serializeROSmessage(ros_message, buffer);
+        return typed_typesupport->serializeROSmessage(ros_message, ser);
     }
     RMW_SET_ERROR_MSG("Unknown typesupport identifier");
     return false;
@@ -308,7 +303,7 @@ _serialize_ros_message(
 
 bool
 _deserialize_ros_message(
-    const rmw_fastrtps_cpp::Buffer * buffer, void *ros_message, void * untyped_typesupport,
+    eprosima::fastcdr::FastBuffer * buffer, void *ros_message, void * untyped_typesupport,
     const char* typesupport_identifier)
 {
     if (using_introspection_c_typesupport(typesupport_identifier)) {
@@ -345,7 +340,7 @@ typedef struct CustomClientInfo
 typedef struct CustomClientResponse
 {
     eprosima::fastrtps::rtps::SampleIdentity sample_identity_;
-    rmw_fastrtps_cpp::Buffer *buffer_;
+    eprosima::fastcdr::FastBuffer *buffer_;
 
     CustomClientResponse() : buffer_(nullptr) {}
 } CustomClientResponse;
@@ -354,6 +349,7 @@ class topicnamesandtypesReaderListener : public ReaderListener {
 	public:
 	topicnamesandtypesReaderListener(){};
 	void onNewCacheChangeAdded(RTPSReader* reader, const CacheChange_t* const change_in){
+        (void)reader;
 		CacheChange_t* change = (CacheChange_t*) change_in;
 		if(change->kind == ALIVE){
 			WriterProxyData proxyData;
@@ -385,7 +381,7 @@ class ClientListener : public SubscriberListener
             assert(sub);
 
             CustomClientResponse response;
-            response.buffer_ = _create_data(info_->response_type_support_, info_->typesupport_identifier_);
+            response.buffer_ = new eprosima::fastcdr::FastBuffer();
             SampleInfo_t sinfo;
 
             if(sub->takeNextData(response.buffer_, &sinfo))
@@ -623,7 +619,7 @@ extern "C"
     {
         return RMW_RET_OK;
     }
-
+    
     rmw_node_t* rmw_create_node(const char *name, size_t domain_id)
     {
         if (!name) {
@@ -631,7 +627,7 @@ extern "C"
             return NULL;
         }
 
-        eprosima::Log::setVerbosity(eprosima::VERB_ERROR);
+        eprosima::fastrtps::Log::SetVerbosity(eprosima::fastrtps::Log::Error);
 
         ParticipantAttributes participantParam;
         participantParam.rtps.builtin.domainId = static_cast<uint32_t>(domain_id);
@@ -695,57 +691,11 @@ extern "C"
 
     return node_handle;
 fail:
-	delete(tnat_1);
+    delete(tnat_1);
 	delete(tnat_2);
 	delete(node_impl);
 	return NULL;
 
-    }
-
-    rmw_ret_t 
-    rmw_destroy_ros_meta(rmw_ros_meta_t * rosmeta)
-    {
-      if (!rosmeta) {
-        RMW_SET_ERROR_MSG("received null pointer");
-        return RMW_RET_ERROR;
-      }
-
-      for (int i=0;i < rosmeta->count; i++){
-        if (!rosmeta->node_names[i].data) {
-          RMW_SET_ERROR_MSG("received null pointer");
-          return RMW_RET_ERROR;
-        }
-        rmw_free((char*)rosmeta->node_names[i].data);
-        
-        if (!rosmeta->ids[i].implementation_identifier) {
-          RMW_SET_ERROR_MSG("received null pointer");
-          return RMW_RET_ERROR;
-        }
-        rmw_free((char*)rosmeta->ids[i].implementation_identifier);
-      }
-
-      if (!rosmeta->node_names) {
-        RMW_SET_ERROR_MSG("received null pointer");
-        return RMW_RET_ERROR;
-      }
-      rmw_free((rmw_string_t *)rosmeta->node_names);
-
-      if (!rosmeta->ids) {
-        RMW_SET_ERROR_MSG("received null pointer");
-        return RMW_RET_ERROR;
-      }
-      rmw_free((rmw_gid_t *)rosmeta->ids);
-
-      rmw_free((rmw_ros_meta_t *)rosmeta);
-
-      return RMW_RET_OK;
-    }
-
-    rmw_ret_t
-    rmw_get_remote_topic_names_and_types(
-        rmw_topic_names_and_types_t * topic_names_and_types)
-    {
-        
     }
 
     rmw_ret_t rmw_destroy_node(rmw_node_t * node)
@@ -852,16 +802,16 @@ fail:
         publisherParam.topic.topicKind = NO_KEY;
         publisherParam.topic.topicDataType = type_name;
         publisherParam.topic.topicName = topic_name;
-
         publisherParam.qos.m_publishMode.kind = ASYNCHRONOUS_PUBLISH_MODE;
+        publisherParam.historyMemoryPolicy = PREALLOCATED_WITH_REALLOC_MEMORY_MODE;
 
         // 1 Heartbeat every 10ms
-        publisherParam.times.heartbeatPeriod.seconds = 0;
-        publisherParam.times.heartbeatPeriod.fraction = 42949673;
+        //publisherParam.times.heartbeatPeriod.seconds = 0;
+        //publisherParam.times.heartbeatPeriod.fraction = 42949673;
 
         // 300000 bytes each 10ms
-        ThroughputControllerDescriptor throughputController{600000, 10};
-        publisherParam.terminalThroughputController = throughputController;
+        //ThroughputControllerDescriptor throughputController{3000000, 10};
+        //publisherParam.throughputController = throughputController;
 
         if(!get_datawriter_qos(*qos_policies, publisherParam))
             goto fail;
@@ -951,6 +901,18 @@ fail:
     }
 
 
+    rmw_ret_t
+    rmw_get_remote_topic_names_and_types(
+        rmw_topic_names_and_types_t * topic_names_and_types)
+    {
+
+    }
+
+    rmw_ret_t
+    rmw_destroy_ros_meta(rmw_ros_meta_t * rosmeta)
+    {
+    }
+
     rmw_ret_t rmw_publish(const rmw_publisher_t *publisher, const void *ros_message)
     {
         assert(publisher);
@@ -966,19 +928,18 @@ fail:
         CustomPublisherInfo *info = (CustomPublisherInfo*)publisher->data;
         assert(info);
 
-        rmw_fastrtps_cpp::Buffer *buffer = _create_data(info->type_support_, info->typesupport_identifier_);
+        eprosima::fastcdr::FastBuffer buffer;
+        eprosima::fastcdr::Cdr ser(buffer);
 
-        if(_serialize_ros_message(ros_message, buffer, info->type_support_, info->typesupport_identifier_))
+        if(_serialize_ros_message(ros_message, ser, info->type_support_, info->typesupport_identifier_))
         {
-            if(info->publisher_->write((void*)buffer))
+            if(info->publisher_->write(&ser))
                 returnedValue = RMW_RET_OK;
             else
                 RMW_SET_ERROR_MSG("cannot publish data");
         }
         else
             RMW_SET_ERROR_MSG("cannot serialize data");
-
-        _delete_data(buffer, info->type_support_, info->typesupport_identifier_);
 
         return returnedValue;
     }
@@ -1028,8 +989,6 @@ fail:
             return nullptr;
           }
         #endif
-
-        eprosima::Log::setVerbosity(eprosima::VERB_ERROR);
 
         ParticipantAttributes participantParam;
         participantParam.rtps.builtin.domainId = static_cast<uint32_t>(domain_id);
@@ -1227,6 +1186,7 @@ fail:
         subscriberParam.topic.topicKind = NO_KEY;
         subscriberParam.topic.topicDataType = type_name;
         subscriberParam.topic.topicName = topic_name;
+        subscriberParam.historyMemoryPolicy = PREALLOCATED_WITH_REALLOC_MEMORY_MODE;
 
         if(!get_datareader_qos(*qos_policies, subscriberParam))
             goto fail;
@@ -1327,21 +1287,19 @@ fail:
         CustomSubscriberInfo *info = (CustomSubscriberInfo*)subscription->data;
         assert(info);
 
-        rmw_fastrtps_cpp::Buffer *buffer = _create_data(info->type_support_, info->typesupport_identifier_);
+        eprosima::fastcdr::FastBuffer buffer;
         SampleInfo_t sinfo;
 
-        if(info->subscriber_->takeNextData(buffer, &sinfo))
+        if(info->subscriber_->takeNextData(&buffer, &sinfo))
         {
             info->listener_->data_taken();
 
             if(sinfo.sampleKind == ALIVE)
             {
-                _deserialize_ros_message(buffer, ros_message, info->type_support_, info->typesupport_identifier_);
+                _deserialize_ros_message(&buffer, ros_message, info->type_support_, info->typesupport_identifier_);
                 *taken = true;
             }
         }
-
-        _delete_data(buffer, info->type_support_, info->typesupport_identifier_);
 
         return RMW_RET_OK;
     }
@@ -1372,16 +1330,16 @@ fail:
         CustomSubscriberInfo *info = (CustomSubscriberInfo*)subscription->data;
         assert(info);
 
-        rmw_fastrtps_cpp::Buffer *buffer = _create_data(info->type_support_, info->typesupport_identifier_);
+        eprosima::fastcdr::FastBuffer buffer;
         SampleInfo_t sinfo;
 
-        if(info->subscriber_->takeNextData(buffer, &sinfo))
+        if(info->subscriber_->takeNextData(&buffer, &sinfo))
         {
             info->listener_->data_taken();
 
             if(sinfo.sampleKind == ALIVE)
             {
-                _deserialize_ros_message(buffer, ros_message, info->type_support_, info->typesupport_identifier_);
+                _deserialize_ros_message(&buffer, ros_message, info->type_support_, info->typesupport_identifier_);
                 rmw_gid_t * sender_gid = &message_info->publisher_gid;
                 sender_gid->implementation_identifier = eprosima_fastrtps_identifier;
                 memset(sender_gid->data, 0, RMW_GID_STORAGE_SIZE);
@@ -1389,8 +1347,6 @@ fail:
                 *taken = true;
             }
         }
-
-        _delete_data(buffer, info->type_support_, info->typesupport_identifier_);
 
         return RMW_RET_OK;
     }
@@ -1577,7 +1533,7 @@ fail:
     typedef struct CustomServiceRequest
     {
 	    eprosima::fastrtps::rtps::SampleIdentity sample_identity_;
-	    rmw_fastrtps_cpp::Buffer *buffer_;
+	    eprosima::fastcdr::FastBuffer *buffer_;
 
 	    CustomServiceRequest() : buffer_(nullptr) {}
     } CustomServiceRequest;
@@ -1586,8 +1542,11 @@ fail:
     {
         public:
 
-            ServiceListener(CustomServiceInfo *info) : info_(info),
-            conditionMutex_(NULL), conditionVariable_(NULL) {}
+            explicit ServiceListener(CustomServiceInfo *info)
+            : info_(info), conditionMutex_(NULL), conditionVariable_(NULL)
+            {
+                (void)info_;
+            }
 
 
             void onNewDataMessage(Subscriber *sub)
@@ -1595,7 +1554,7 @@ fail:
                 assert(sub);
 
                 CustomServiceRequest request;
-                request.buffer_ = _create_data(info_->request_type_support_, info_->typesupport_identifier_);
+                request.buffer_ = new eprosima::fastcdr::FastBuffer();
                 SampleInfo_t sinfo;
 
                 if(sub->takeNextData(request.buffer_, &sinfo))
@@ -1847,13 +1806,14 @@ fail:
         CustomClientInfo *info = (CustomClientInfo*)client->data;
         assert(info);
 
-        rmw_fastrtps_cpp::Buffer *buffer = _create_data(info->request_type_support_, info->typesupport_identifier_);
+        eprosima::fastcdr::FastBuffer buffer;
+        eprosima::fastcdr::Cdr ser(buffer);
 
-        if(_serialize_ros_message(ros_request, buffer, info->request_type_support_, info->typesupport_identifier_))
+        if(_serialize_ros_message(ros_request, ser, info->request_type_support_, info->typesupport_identifier_))
         {
             eprosima::fastrtps::rtps::WriteParams wparams;
 
-            if(info->request_publisher_->write((void*)buffer, wparams))
+            if(info->request_publisher_->write(&ser, wparams))
             {
                 returnedValue = RMW_RET_OK;
                 *sequence_id = ((int64_t)wparams.sample_identity().sequence_number().high) << 32 | wparams.sample_identity().sequence_number().low;
@@ -1863,8 +1823,6 @@ fail:
         }
         else
             RMW_SET_ERROR_MSG("cannot serialize data");
-
-        _delete_data(buffer, info->request_type_support_, info->typesupport_identifier_);
 
         return returnedValue;
     }
@@ -1900,7 +1858,7 @@ fail:
             memcpy(request_header->writer_guid, &request.sample_identity_.writer_guid(), sizeof(eprosima::fastrtps::rtps::GUID_t));
             request_header->sequence_number = ((int64_t)request.sample_identity_.sequence_number().high) << 32 | request.sample_identity_.sequence_number().low;
 
-            _delete_data(request.buffer_, info->request_type_support_, info->typesupport_identifier_);
+            delete request.buffer_;
 
             *taken = true;
         }
@@ -1937,9 +1895,9 @@ fail:
 
             request_header->sequence_number = ((int64_t)response.sample_identity_.sequence_number().high) << 32 | response.sample_identity_.sequence_number().low;
 
-            *taken = true;
+            delete response.buffer_;
 
-            _delete_data(response.buffer_, info->request_type_support_, info->typesupport_identifier_);
+            *taken = true;
         }
 
         return RMW_RET_OK;
@@ -1964,26 +1922,21 @@ fail:
         CustomServiceInfo *info = (CustomServiceInfo*)service->data;
         assert(info);
 
-        rmw_fastrtps_cpp::Buffer *buffer = _create_data(info->response_type_support_, info->typesupport_identifier_);
+        eprosima::fastcdr::FastBuffer buffer;
+        eprosima::fastcdr::Cdr ser(buffer);
 
-        if(buffer != nullptr)
+        _serialize_ros_message(ros_response, ser, info->response_type_support_, info->typesupport_identifier_);
+        eprosima::fastrtps::rtps::WriteParams wparams;
+        memcpy(&wparams.related_sample_identity().writer_guid(), request_header->writer_guid, sizeof(eprosima::fastrtps::rtps::GUID_t));
+        wparams.related_sample_identity().sequence_number().high = (int32_t)((request_header->sequence_number & 0xFFFFFFFF00000000) >> 32);
+        wparams.related_sample_identity().sequence_number().low = (int32_t)(request_header->sequence_number & 0xFFFFFFFF);
+
+        if(info->response_publisher_->write(&ser, wparams))
         {
-            _serialize_ros_message(ros_response, buffer, info->response_type_support_, info->typesupport_identifier_);
-            eprosima::fastrtps::rtps::WriteParams wparams;
-            memcpy(&wparams.related_sample_identity().writer_guid(), request_header->writer_guid, sizeof(eprosima::fastrtps::rtps::GUID_t));
-            wparams.related_sample_identity().sequence_number().high = (int32_t)((request_header->sequence_number & 0xFFFFFFFF00000000) >> 32);
-            wparams.related_sample_identity().sequence_number().low = (int32_t)(request_header->sequence_number & 0xFFFFFFFF);
-
-            if(info->response_publisher_->write((void*)buffer, wparams))
-            {
-                returnedValue = RMW_RET_OK;
-            }
-            else
-                RMW_SET_ERROR_MSG("cannot publish data");
-
-            _delete_data(buffer, info->response_type_support_, info->typesupport_identifier_);
+            returnedValue = RMW_RET_OK;
         }
-
+        else
+            RMW_SET_ERROR_MSG("cannot publish data");
 
         return returnedValue;
     }
@@ -2470,6 +2423,7 @@ fail:
 
 	//Get and combine info from both Pub and Sub
 	std::pair<StatefulReader*,StatefulReader*> EDPReaders = participant->getEDPReaders();
+    (void)EDPReaders;
 	//Access the slave Listeners, which are the ones that have the topicnamesandtypes member
   	//Get info from publisher and subscriber
 	std::map<std::string,std::set<std::string>> unfiltered_topics; //Combined results from the two lists
@@ -2518,17 +2472,21 @@ fail:
 			return RMW_RET_ERROR;
 		}
 		//Iterate topics for instances
-		int index;
 		topic_names_and_types->topic_count = 0;
 		for(auto it : topics){
-			index = topic_names_and_types->topic_count;
+			size_t index = topic_names_and_types->topic_count;
+#ifdef _WIN32
+#define __local_strdup _strdup
+#else
+#define __local_strdup strdup
+#endif
 			//Alloc
-			char *topic_name = strdup(it.first.c_str());
+			char *topic_name = __local_strdup(it.first.c_str());
 			if(!topic_name){
 				RMW_SET_ERROR_MSG("Failed to allocate memory");
 				return RMW_RET_ERROR;
 			}
-			char *topic_type = strdup(it.second.c_str());
+			char *topic_type = __local_strdup(it.second.c_str());
 			if(!topic_type){
 				rmw_free(topic_name);
 				RMW_SET_ERROR_MSG("Failed to allocate memory");
@@ -2549,8 +2507,8 @@ fail:
     rmw_destroy_topic_names_and_types(
       rmw_topic_names_and_types_t * topic_names_and_types)
     {
-        int cap = topic_names_and_types->topic_count;
-	for(int i=0;i < cap; i++){
+        size_t cap = topic_names_and_types->topic_count;
+	for(size_t i=0;i < cap; i++){
 		rmw_free(topic_names_and_types->topic_names[i]);
 		rmw_free(topic_names_and_types->type_names[i]);
 	}	
@@ -2565,7 +2523,6 @@ fail:
       const char * topic_name,
       size_t * count)
     {
-        char *target_topic = const_cast<char *>(topic_name);
 	//safechecks
 	
 	if(!node){
@@ -2580,7 +2537,6 @@ fail:
         }
 
         CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
-	Participant *participant = impl->participant;
 
 	std::map<std::string,std::set<std::string>>unfiltered_topics;
 	topicnamesandtypesReaderListener* slave_target = impl->secondaryPubListener;
@@ -2609,7 +2565,6 @@ fail:
       const char * topic_name,
       size_t * count)
 {
-	char *target_topic = const_cast<char *>(topic_name);
 	//safechecks
 	
 	if(!node){
@@ -2624,7 +2579,6 @@ fail:
         }
 
         CustomParticipantInfo* impl = static_cast<CustomParticipantInfo*>(node->data);
-	Participant *participant = impl->participant;
 
 	std::map<std::string,std::set<std::string>>unfiltered_topics;
 	topicnamesandtypesReaderListener* slave_target = impl->secondarySubListener;
