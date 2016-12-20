@@ -21,6 +21,7 @@
 #include <utility>
 #include <set>
 #include <string>
+#include <sys/time.h>
 
 #include "rmw/allocators.h"
 #include "rmw/rmw.h"
@@ -40,6 +41,7 @@
 #include "fastrtps/subscriber/SubscriberListener.h"
 #include "fastrtps/subscriber/SampleInfo.h"
 #include "fastrtps/attributes/SubscriberAttributes.h"
+#include <fastrtps/participant/ParticipantListener.h>
 
 #include "fastrtps/rtps/RTPSDomain.h"
 #include "fastrtps/rtps/builtin/data/WriterProxyData.h"
@@ -696,6 +698,184 @@ fail:
   return NULL;
 }
 
+rmw_ret_t
+rmw_destroy_ros_meta(rmw_ros_meta_t * rosmeta)
+{
+  if (!rosmeta) {
+    RMW_SET_ERROR_MSG("received null pointer");
+    return RMW_RET_ERROR;
+  }
+
+  for (int i=0;i < rosmeta->count; i++){
+    if (!rosmeta->node_names[i].data) {
+      RMW_SET_ERROR_MSG("received null pointer");
+      return RMW_RET_ERROR;
+    }
+    rmw_free((char*)rosmeta->node_names[i].data);
+
+    if (!rosmeta->ids[i].implementation_identifier) {
+      RMW_SET_ERROR_MSG("received null pointer");
+      return RMW_RET_ERROR;
+    }
+    rmw_free((char*)rosmeta->ids[i].implementation_identifier);
+  }
+
+  if (!rosmeta->node_names) {
+    RMW_SET_ERROR_MSG("received null pointer");
+    return RMW_RET_ERROR;
+  }
+  rmw_free((rmw_string_t *)rosmeta->node_names);
+
+  if (!rosmeta->ids) {
+    RMW_SET_ERROR_MSG("received null pointer");
+    return RMW_RET_ERROR;
+  }
+  rmw_free((rmw_gid_t *)rosmeta->ids);
+
+  rmw_free((rmw_ros_meta_t *)rosmeta);
+
+  return RMW_RET_OK;
+}
+
+rmw_ret_t
+rmw_get_remote_topic_names_and_types(
+    rmw_topic_names_and_types_t * topic_names_and_types)
+{
+  rmw_node_t * node = rmw_create_node("test", 47);
+
+  if (!node) {
+    RMW_SET_ERROR_MSG("null node handle");
+    return RMW_RET_ERROR;
+  }
+  if (rmw_check_zero_rmw_topic_names_and_types(topic_names_and_types) != RMW_RET_OK) {
+    return RMW_RET_ERROR;
+  }
+
+  // Get participant pointer from node
+  if (node->implementation_identifier != eprosima_fastrtps_identifier) {
+    RMW_SET_ERROR_MSG("node handle not from this implementation");
+    return RMW_RET_ERROR;
+  }
+
+  CustomParticipantInfo * impl = static_cast<CustomParticipantInfo *>(node->data);
+  Participant * participant = impl->participant;
+
+  // const rosidl_message_type_support_t * type_support = get_message_typesupport_handle(
+  //     type_supports, rosidl_typesupport_introspection_c__identifier);
+  // if (!type_support) {
+  //   type_support = get_message_typesupport_handle(
+  //     type_supports, rosidl_typesupport_introspection_cpp::typesupport_identifier);
+  //   if (!type_support) {
+  //     RMW_SET_ERROR_MSG("type support not from this implementation");
+  //     return NULL;
+  //   }
+  // }
+
+  // Get and combine info from both Pub and Sub
+  std::pair<StatefulReader *, StatefulReader *> EDPReaders = participant->getEDPReaders();
+  (void)EDPReaders;
+  // Access the slave Listeners, which are the ones that have the topicnamesandtypes member
+  // Get info from publisher and subscriber
+  // Combined results from the two lists
+  std::map<std::string, std::set<std::string>> unfiltered_topics;
+  topicnamesandtypesReaderListener * slave_target = impl->secondarySubListener;
+
+  //timer variables
+  struct timeval a, b;
+  long totalb, totala;
+  long diff;
+
+  //get initial time
+  gettimeofday(&a, NULL);
+  totala = a.tv_sec + a.tv_usec/1000000;
+  bool timeout = false;
+
+  while(!timeout){
+      gettimeofday(&b, NULL);
+      totalb = b.tv_sec + b.tv_usec/1000000;
+      diff = (totalb - totala);
+      // wait for 1 millisecond
+      if(diff > 0.1){
+        timeout = true;
+      }
+  }
+
+  slave_target->mapmutex.lock();
+  for (auto it : slave_target->topicNtypes) {
+    for (auto & itt : it.second) {
+      unfiltered_topics[it.first].insert(itt);
+    }
+  }
+  slave_target->mapmutex.unlock();
+  slave_target = impl->secondaryPubListener;
+  slave_target->mapmutex.lock();
+  for (auto it : slave_target->topicNtypes) {
+    for (auto & itt : it.second) {
+      unfiltered_topics[it.first].insert(itt);
+    }
+  }
+
+  slave_target->mapmutex.unlock();
+  // Filter duplicates
+  std::map<std::string, std::string> topics;
+  for (auto & it : unfiltered_topics) {
+    if (it.second.size() == 1) {topics[it.first] = *it.second.begin();}
+  }
+  std::string substring = "::msg::dds_::";
+  for (auto & it : topics) {
+    size_t substring_position = it.second.find(substring);
+    if (it.second[it.second.size() - 1] == '_' && substring_position != std::string::npos) {
+      it.second = it.second.substr(0, substring_position) + "/" + it.second.substr(
+        substring_position + substring.size(),
+        it.second.size() - substring_position - substring.size() - 1);
+    }
+  }
+  // Copy data to results handle
+  if (topics.size() > 0) {
+    // Alloc memory for pointers to instances
+    topic_names_and_types->topic_names =
+      static_cast<char **>(rmw_allocate(sizeof(char *) * topics.size()));
+    if (!topic_names_and_types->topic_names) {
+      RMW_SET_ERROR_MSG("Failed to allocate memory");
+      return RMW_RET_ERROR;
+    }
+    topic_names_and_types->type_names =
+      static_cast<char **>(rmw_allocate(sizeof(char *) * topics.size()));
+    if (!topic_names_and_types->type_names) {
+      rmw_free(topic_names_and_types->topic_names);
+      RMW_SET_ERROR_MSG("Failed to allocate memory");
+      return RMW_RET_ERROR;
+    }
+    // Iterate topics for instances
+    topic_names_and_types->topic_count = 0;
+    for (auto it : topics) {
+      size_t index = topic_names_and_types->topic_count;
+#ifdef _WIN32
+#define __local_strdup _strdup
+#else
+#define __local_strdup strdup
+#endif
+      // Alloc
+      char * topic_name = __local_strdup(it.first.c_str());
+      if (!topic_name) {
+        RMW_SET_ERROR_MSG("Failed to allocate memory");
+        return RMW_RET_ERROR;
+      }
+      char * topic_type = __local_strdup(it.second.c_str());
+      if (!topic_type) {
+        rmw_free(topic_name);
+        RMW_SET_ERROR_MSG("Failed to allocate memory");
+        return RMW_RET_ERROR;
+      }
+      // Insert
+      topic_names_and_types->topic_names[index] = topic_name;
+      topic_names_and_types->type_names[index] = topic_type;
+      ++topic_names_and_types->topic_count;
+    }
+  }
+  return RMW_RET_OK;
+}
+
 rmw_ret_t rmw_destroy_node(rmw_node_t * node)
 {
   if (!node) {
@@ -924,6 +1104,113 @@ rmw_ret_t rmw_publish(const rmw_publisher_t * publisher, const void * ros_messag
   }
 
   return returnedValue;
+}
+
+class ParticipantListenerNodeName:public ParticipantListener
+{
+public:
+
+    ParticipantListenerNodeName()
+    {
+
+    }
+
+    std::vector<std::string> get_node_name()
+    {
+      return node_name;
+    }
+
+    void onParticipantDiscovery(Participant* p, ParticipantDiscoveryInfo info){
+       if(info.rtps.m_RTPSParticipantName.size()>2 && info.rtps.m_RTPSParticipantName.compare("get_node_names")!=0){
+           node_name.push_back(info.rtps.m_RTPSParticipantName);
+       }
+    }
+private:
+    std::vector<std::string> node_name;
+};
+
+rmw_ros_meta_t *
+rmw_get_node_names(void)
+{
+    // Use the current ROS_DOMAIN_ID.
+    char * ros_domain_id = nullptr;
+    const char * env_var = "ROS_DOMAIN_ID";
+    #ifndef _WIN32
+      ros_domain_id = getenv(env_var);
+    #else
+      size_t ros_domain_id_size;
+      _dupenv_s(&ros_domain_id, &ros_domain_id_size, env_var);
+    #endif
+      size_t domain_id = std::stoi(ros_domain_id);
+
+      // On Windows, setting the ROS_DOMAIN_ID does not fix the problem, so error early.
+    #ifdef _WIN32
+      if (!ros_domain_id) {
+        RMW_SET_ERROR_MSG("environment variable ROS_DOMAIN_ID is not set");
+        fprintf(stderr, "[rmw_fastrtps_cpp]: error: %s\n", rmw_get_error_string_safe());
+        return nullptr;
+      }
+    #endif
+
+    ParticipantAttributes participantParam;
+    participantParam.rtps.builtin.domainId = static_cast<uint32_t>(domain_id);
+    participantParam.rtps.setName("get_node_names");
+
+    ParticipantListenerNodeName* listener_node_name = new ParticipantListenerNodeName();
+
+    Participant *participant = Domain::createParticipant(participantParam, listener_node_name);
+
+    //timer variables
+    struct timeval a, b;
+    long totalb, totala;
+    long diff;
+
+    //get initial time
+    gettimeofday(&a, NULL);
+    totala = a.tv_sec + a.tv_usec/1000000;
+    bool timeout = false;
+
+    while(!timeout){
+        gettimeofday(&b, NULL);
+        totalb = b.tv_sec + b.tv_usec/1000000;
+        diff = (totalb - totala);
+        // wait for 1 millisecond
+        if(diff > 0.001){
+          timeout = true;
+        }
+    }
+
+    rmw_ros_meta_t* ros_meta_data = (rmw_ros_meta_t*)rmw_allocate(sizeof(rmw_ros_meta_t));
+    ros_meta_data->count = 0;
+    ros_meta_data->node_names = NULL;
+    ros_meta_data->ids = NULL;
+    if (!ros_meta_data) {
+        RMW_SET_ERROR_MSG("failed to allocate memory");
+        return NULL;
+    }
+
+    std::vector<std::string> node_name = listener_node_name->get_node_name();
+    ros_meta_data->node_names = (rmw_string_t*) rmw_allocate(sizeof(rmw_string_t)*node_name.size());
+    ros_meta_data->ids = (rmw_gid_t*) rmw_allocate(sizeof(rmw_gid_t)*node_name.size());
+
+    for (int i = 0; i < node_name.size(); i++){
+        char* data_aux = (char*) rmw_allocate(sizeof(char)*strlen(node_name[i].c_str())+1);
+        memcpy(data_aux, node_name[i].c_str(), strlen(node_name[i].c_str())+1);
+        ros_meta_data->node_names[i].data = data_aux;
+
+        char* data_aux2 = (char*) rmw_allocate(sizeof(char)*strlen(eprosima_fastrtps_identifier)+1);
+        memcpy(data_aux2, eprosima_fastrtps_identifier, strlen(eprosima_fastrtps_identifier)+1);
+        ros_meta_data->ids[i].implementation_identifier = data_aux2;
+
+        //memcpy(ros_meta_data->ids[i].data, ros_message.id.data, ros_message.id.size);
+        //std::cout << "/" << node_name[i] << std::endl;
+    }
+    // Assign the size
+    ros_meta_data->count = node_name.size();
+
+    Domain::removeParticipant(participant);
+
+    return ros_meta_data;
 }
 
 class SubListener;
